@@ -5,27 +5,58 @@ from functools import wraps
 from time import sleep
 from typing import Any
 
+import elasticsearch
+import psycopg2
+
 log = logging.getLogger(__name__)
 
 
-def backoff(start_sleep_time=0.1, factor=2, border_sleep_time=10) -> None:
+def backoff(start_sleep_time: float = 0.1,
+            factor: int = 2,
+            border_sleep_time: float = 10,
+            max_retries: int = 100,
+            log=log) -> None:
+
     def func_wrapper(func):
+
         @wraps(func)
         def inner(*args, **kwargs):
+
+            def calc_sleep_time(n):
+                if n >= max_retries:
+                    log.error('Max retries exceed, exiting')
+                    exit()
+                if sleep_time < border_sleep_time:
+                    return min(start_sleep_time * (factor ** n),
+                               border_sleep_time)
+                else:
+                    return border_sleep_time
+
             sleep_time = start_sleep_time
             n = 0
+
             while True:
                 try:
                     return func(*args, **kwargs)
+
+                except psycopg2.OperationalError as error:
+                    n += 1
+                    log.error('Postgres is in down state '
+                              f'(retries count = {n})')
+                    log.exception(error)
+                    sleep(calc_sleep_time(n))
+
+                except elasticsearch.exceptions.ConnectionError:
+                    n += 1
+                    log.error('ElasticSearch is in down state '
+                              f'(retries count = {n})')
+                    sleep(calc_sleep_time(n))
+
                 except Exception as error:
-                    if sleep_time < border_sleep_time:
-                        sleep_time = min(start_sleep_time * (factor ** n),
-                                         border_sleep_time)
-                    else:
-                        sleep_time = border_sleep_time
                     n += 1
                     log.exception(error)
-                    sleep(sleep_time)
+                    sleep(calc_sleep_time(n))
+
         return inner
     return func_wrapper
 
@@ -75,7 +106,7 @@ class State:
         return self.state.get(key)
 
 
-def get_persons_by_role(row: dict, role: str) -> list:
+def get_persons_by_role(row: dict, role: str) -> list[str]:
     return [person['person_name'] for person
             in row['persons']
             if person['person_role'] == role]

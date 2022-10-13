@@ -1,10 +1,3 @@
-
-FIELDS = [
-    'fw.modified',
-    'p.modified',
-    'g.modified'
-]
-
 FILMWORK_QUERY = '''
 SELECT
    fw.id,
@@ -30,6 +23,6 @@ LEFT JOIN content.person_film_work pfw ON pfw.film_work_id = fw.id
 LEFT JOIN content.person p ON p.id = pfw.person_id
 LEFT JOIN content.genre_film_work gfw ON gfw.film_work_id = fw.id
 LEFT JOIN content.genre g ON g.id = gfw.genre_id
-WHERE %s > %s
+WHERE fw.modified > %s OR p.modified > %s OR g.modified > %s
 GROUP BY fw.id
 '''

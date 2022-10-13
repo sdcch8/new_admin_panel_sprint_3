@@ -4,30 +4,27 @@ from datetime import datetime
 from components.elasticsearch import ElasticSearch
 from components.models import ESSchemaIndex
 from components.postgres import Postgres
-from components.postgres_queries import FIELDS, FILMWORK_QUERY
+from components.postgres_query import FILMWORK_QUERY
 from components.utils import (JsonFileStorage, State, get_persons_by_role,
                               get_persons_ids_by_role)
 
 log = logging.getLogger(__name__)
 
 
-class ETL():
+class ETL:
+    def __init__(self):
+        self.state = State(JsonFileStorage('state.json'))
+        self.postgres = Postgres()
+        self.es = ElasticSearch()
+
     def extract(self) -> list[dict]:
         log.info('Starting EXTRACT process')
-        state = State(JsonFileStorage('state.json'))
-        date_modified = (state.get_state('date_modified')
-                         if state.get_state('date_modified')
-                         else '1900-01-01')
-        postgres = Postgres()
-        postgres.connect()
-        for field in FIELDS:
-            for batch in postgres.execute_query(FILMWORK_QUERY,
-                                                (field, date_modified)):
-                yield batch
-        state.set_state('date_modified',
-                        datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        postgres.disconnect()
-        log.info('EXTRACT process finished')
+        state = self.state.get_state('date_modified')
+        date_modified = state if state else datetime.min
+        for batch in self.postgres.execute_query(FILMWORK_QUERY,
+                                                 (date_modified, ) * 3):
+            yield batch
+        log.info('EXTRACT process is finished')
 
     def transform(self, batch: list[dict]) -> list[ESSchemaIndex]:
         log.info('Starting TRANSFORM process for batch')
@@ -52,7 +49,7 @@ class ETL():
 
     def load(self, batch: list[ESSchemaIndex]) -> None:
         log.info('Starting LOAD process for batch')
-        es = ElasticSearch()
-        es.connect()
-        es.load_data(batch)
+        self.es.load_data(batch)
+        self.state.set_state('date_modified',
+                             datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         log.info('LOAD process for batch is finished')

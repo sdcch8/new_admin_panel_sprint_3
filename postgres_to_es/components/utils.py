@@ -24,7 +24,7 @@ def backoff(start_sleep_time: float = 0.1,
 
             def calc_sleep_time(n):
                 if n >= max_retries:
-                    log.error('Max retries exceed, exiting')
+                    log.info('Max retries exceed, exiting')
                     exit()
                 if sleep_time < border_sleep_time:
                     return min(start_sleep_time * (factor ** n),
